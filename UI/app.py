@@ -242,11 +242,60 @@ def get_statistics() -> str:
     
     total_queries = len(router.routing_history)
     
+    # Placeholder company-wide data (will be replaced with Supabase data later)
+    company_total_energy_saved = 12.4567  # kWh
+    company_total_cost_saved = 234.89     # USD
+    company_total_co2_saved = 4982.7      # grams
+    company_total_queries = 8742
+    
     stats = f"""
-<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px; text-align: center;">
-    <div>
+<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px;">
+    <div style="text-align: center; margin-bottom: 25px;">
         <p style="color: #475569; font-size: 1.1em; margin: 0; font-weight: 500;">{total_queries} queries processed</p>
         <p style="color: #64748b; font-size: 0.9em; margin: 10px 0 0 0;">Model used is shown with each response</p>
+    </div>
+    
+    <div style="border-top: 1px solid #e2e8f0; padding-top: 20px;">
+        <h4 style="color: #1e293b; font-size: 1em; margin: 0 0 15px 0; font-weight: 600; text-align: center;">Company Total Saved</h4>
+        
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
+            <div style="background: #f0fdf4; border-radius: 8px; padding: 12px; text-align: center;">
+                <p style="color: #166534; font-size: 0.8em; margin: 0;">Energy</p>
+                <p style="color: #15803d; font-size: 1.3em; font-weight: bold; margin: 3px 0;">
+                    {company_total_energy_saved:.2f}
+                </p>
+                <p style="color: #166534; font-size: 0.7em; margin: 0;">kWh</p>
+            </div>
+            
+            <div style="background: #eff6ff; border-radius: 8px; padding: 12px; text-align: center;">
+                <p style="color: #1e40af; font-size: 0.8em; margin: 0;">Cost</p>
+                <p style="color: #2563eb; font-size: 1.3em; font-weight: bold; margin: 3px 0;">
+                    ${company_total_cost_saved:.2f}
+                </p>
+                <p style="color: #1e40af; font-size: 0.7em; margin: 0;">USD</p>
+            </div>
+        </div>
+        
+        <div style="background: #f8fafc; border-radius: 8px; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="text-align: center; flex: 1;">
+                    <p style="color: #64748b; font-size: 0.8em; margin: 0;">CO₂ Prevented</p>
+                    <p style="color: #0f172a; font-size: 1.1em; font-weight: 600; margin: 3px 0;">
+                        {company_total_co2_saved:.1f}g
+                    </p>
+                </div>
+                <div style="text-align: center; flex: 1;">
+                    <p style="color: #64748b; font-size: 0.8em; margin: 0;">Total Queries</p>
+                    <p style="color: #0f172a; font-size: 1.1em; font-weight: 600; margin: 3px 0;">
+                        {company_total_queries:,}
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <p style="color: #94a3b8; font-size: 0.75em; text-align: center; margin: 10px 0 0 0; font-style: italic;">
+            * Company-wide statistics across all users
+        </p>
     </div>
 </div>
 """
