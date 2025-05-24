@@ -1,24 +1,14 @@
-# Duels de l'IA - Extension Chrome
+# AI Impact Optimizer
 
-Extension Chrome pour l'atelier pédagogique "Duel de l'IA" sur Comparia.
+This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage.
 
-## Installation
-
-1. Clonez ce dépôt ou téléchargez le code source
-2. Ouvrez Chrome et allez dans `chrome://extensions/`
-3. Activez le "Mode développeur" en haut à droite
-4. Cliquez sur "Charger l'extension non empaquetée"
-5. Sélectionnez le dossier contenant l'extension
 
 ## Utilisation
 
-1. Naviguez vers https://comparia.beta.gouv.fr/arene
-2. Un bouton flottant (FAB) apparaîtra en bas à droite
-3. Cliquez sur le bouton pour ouvrir l'interface
-4. Explorez les trois onglets thématiques :
-   - Impact environnemental ✅
-   - Biais (à venir)
-   - Souveraineté numérique (à venir)
+1. Head to the following website: insert-url-here
+2. Write your prompt on the bar at the bottom right of the screen and press 'send'.
+3. Our model will analyse your prompt and give an adequate language model to process it. This model will be displayed on the chat, while on the right side of the screen it shows data on the environmental impact of your prompt.
+
 
 ## Structure
 
