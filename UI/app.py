@@ -3,6 +3,7 @@ import json
 import time
 from typing import Dict, Tuple, List
 import random
+from bertmodel import predict_label
 
 # Model configurations with energy consumption and cost estimates
 MODEL_CONFIGS = {
@@ -53,35 +54,7 @@ class ModelRouter:
         self.routing_history = []
     
     def classify_prompt(self, prompt: str) -> str:
-        """Classify the prompt type based on keywords and complexity"""
-        prompt_lower = prompt.lower()
-        
-        # Check for search engine queries
-        search_keywords = ["what is the weather", "current news", "stock price", 
-                         "latest", "today", "now", "current", "real-time"]
-        if any(keyword in prompt_lower for keyword in search_keywords):
-            return "search_query"
-        
-        # Check for complex reasoning
-        complex_keywords = ["explain in detail", "analyze", "compare and contrast",
-                          "philosophical", "ethical", "complex", "advanced"]
-        if any(keyword in prompt_lower for keyword in complex_keywords):
-            return "complex_reasoning"
-        
-        # Check for coding
-        coding_keywords = ["code", "program", "function", "algorithm", "debug",
-                         "implement", "python", "javascript", "sql"]
-        if any(keyword in prompt_lower for keyword in coding_keywords):
-            return "coding"
-        
-        # Check for creative writing
-        creative_keywords = ["write a story", "poem", "creative", "imagine",
-                           "fiction", "narrative"]
-        if any(keyword in prompt_lower for keyword in creative_keywords):
-            return "creative_writing"
-        
-        # Default to general Q&A
-        return "general_qa"
+        return predict_label(prompt)
     
     def select_model(self, prompt: str) -> str:
         """Select the most efficient model based on prompt classification"""
