@@ -1,19 +1,19 @@
-# AI Impact Optimizer
+# Do I really need a huge LLM?
 
 This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage.
 
 
-## Utilisation
+## How to use
 
 1. Head to the following website: insert-url-here
 2. Write your prompt on the bar at the bottom right of the screen and press 'send'.
-3. Our model will analyse your prompt and give an adequate language model to process it. This model will be displayed on the chat, while on the right side of the screen it shows data on the environmental impact of your prompt.
-
+3. Our model will analyse your prompt and provide an adequate language model to process it. This model will be displayed on the chat, while data on the environmental impact of your prompt will be shown on the right side of the screen.
+4. This repo also contains the methodology we used to train our model. Feel free to adapt it and retrain it to your specific needs!
 
 ## Structure
 
 ```
-duels-new/
+do-I-really-need-a-huge-llm/
 ├── manifest.json
 ├── js/
 │   ├── content.js
