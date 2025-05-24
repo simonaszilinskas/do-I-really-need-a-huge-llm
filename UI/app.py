@@ -4,6 +4,7 @@ import time
 from typing import Dict, Tuple, List
 import random
 from bertmodel import predict_label
+import tiktoken
 
 # Model configurations with energy consumption and cost estimates
 MODEL_CONFIGS = {
@@ -62,31 +63,38 @@ class ModelRouter:
         
         # Model selection logic
         model_map = {
-            "search_query": "search_engine",
-            "complex_reasoning": "gpt-4",
-            "coding": "gpt-3.5",
-            "creative_writing": "gpt-4",
-            "general_qa": "llama-7b"
+            "⁠Search engine": "search_engine",
+            "⁠Reasoning model": "gpt-4",
+            "⁠Developer model": "gpt-3.5",
+            "⁠Large language model": "gpt-4",
+            "⁠Small language model": "llama-7b",
         }
-        
-        # For simple questions, we might use an even lighter model
-        if len(prompt.split()) < 10 and "?" in prompt:
-            return "llama-7b"
-        
+
         return model_map.get(prompt_type, "claude-instant")
     
-    def estimate_tokens(self, prompt: str, response_length: str = "medium") -> int:
-        """Estimate token count for prompt and response"""
-        # Simple estimation: ~1.3 tokens per word
-        prompt_tokens = int(len(prompt.split()) * 1.3)
-        
-        response_multipliers = {
-            "short": 50,
-            "medium": 150,
-            "long": 300
-        }
-        response_tokens = response_multipliers.get(response_length, 150)
-        
+
+    def estimate_tokens(self, 
+                        prompt: str, 
+                        response: str | None = None,
+                        max_response_tokens: int | None = None) -> int:
+        """
+        Estimate total token count: exact prompt tokens + 
+        a target number of response tokens.
+        """
+        model_name = "gpt-4"
+        encoding = tiktoken.encoding_for_model(model_name)
+        # 1) exact prompt tokenization
+        prompt_tokens = len(encoding.encode(prompt))
+
+        if response is not None:
+            response_tokens = len(encoding.encode(response))
+        elif max_response_tokens is not None:
+            # you’re reserving this many tokens for the model’s reply
+            response_tokens = max_response_tokens
+        else:
+            # fallback to a default budget
+            response_tokens = 0
+
         return prompt_tokens + response_tokens
     
     def calculate_savings(self, selected_model: str, prompt: str) -> Dict:
@@ -393,4 +401,4 @@ with gr.Blocks(
     msg.submit(lambda: "", outputs=[msg])
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    demo.launch(share=False)
