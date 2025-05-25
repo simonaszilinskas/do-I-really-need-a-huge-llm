@@ -3,7 +3,6 @@ import json
 import time
 from typing import Dict, Tuple, List
 from bertmodel import predict_label
-import tiktoken
 # from ecologits import EcoLogits  # Removed - using OpenRouter instead
 # from openai import OpenAI  # Removed - using OpenRouter instead
 from dotenv import load_dotenv
@@ -20,14 +19,16 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 MODEL_CONFIGS = {
     "large": {
         "name": "Claude Opus 4",
-        "energy_per_token": 0.0001,  # kWh per token (estimated)
-        "cost_per_token": 0.00003,   # USD per token
+        "energy_per_token": 1.356,  # Wh per token (67.8 Wh / 50 tokens)
+        "cost_per_input_token": 0.000015,   # $15/M tokens
+        "cost_per_output_token": 0.000075,  # $75/M tokens
         "icon": "🧠"
     },
     "small": {
         "name": "Mistral Small 24B",
-        "energy_per_token": 0.00002,
-        "cost_per_token": 0.0000005,
+        "energy_per_token": 0.00596,  # Wh per token (0.298 Wh / 50 tokens)
+        "cost_per_input_token": 0.00000005,   # $0.05/M tokens
+        "cost_per_output_token": 0.00000012,  # $0.12/M tokens
         "icon": "⚡"
     }
 }
@@ -67,20 +68,18 @@ class ModelRouter:
         Estimate total token count: exact prompt tokens + 
         a target number of response tokens.
         """
-        model_name = "gpt-4"
-        encoding = tiktoken.encoding_for_model(model_name)
-        # 1) exact prompt tokenization
-        prompt_tokens = len(encoding.encode(prompt))
-        print(f"[TOKENS] Prompt tokens: {prompt_tokens}")
+        # Simple estimation: 4 characters = 1 token
+        prompt_tokens = len(prompt) // 4
+        print(f"[TOKENS] Prompt tokens: {prompt_tokens} (from {len(prompt)} chars)")
 
         if response is not None:
-            response_tokens = len(encoding.encode(response))
+            response_tokens = len(response) // 4
         elif max_response_tokens is not None:
             # you’re reserving this many tokens for the model’s reply
             response_tokens = max_response_tokens
         else:
-            # fallback to a default budget
-            response_tokens = 0
+            # Estimate response will be similar length to prompt
+            response_tokens = prompt_tokens
 
         total_tokens = prompt_tokens + response_tokens
         print(f"[TOKENS] Response tokens: {response_tokens}, Total: {total_tokens}")
@@ -97,18 +96,26 @@ class ModelRouter:
     def calculate_savings(self, selected_model: str, prompt: str) -> Dict:
         """Calculate energy and cost savings compared to using the large model"""
         print(f"[SAVINGS] Calculating for model: {selected_model}")
-        tokens = self.estimate_tokens(prompt)
+        
+        # Calculate input and output tokens separately
+        input_tokens = len(prompt) // 4
+        output_tokens = input_tokens  # Estimate same length response
+        total_tokens = input_tokens + output_tokens
+        
+        print(f"[SAVINGS] Input tokens: {input_tokens}, Output tokens: {output_tokens}")
         
         selected_config = MODEL_CONFIGS[selected_model]
         large_config = MODEL_CONFIGS["large"]
         
         # Calculate actual usage
-        actual_energy = tokens * selected_config["energy_per_token"]
-        actual_cost = tokens * selected_config["cost_per_token"]
+        actual_energy = total_tokens * selected_config["energy_per_token"]
+        actual_cost = (input_tokens * selected_config["cost_per_input_token"] + 
+                      output_tokens * selected_config["cost_per_output_token"])
         
         # Calculate large model usage
-        large_energy = self.estimate_large_model_energy(tokens)
-        large_cost = tokens * large_config["cost_per_token"]
+        large_energy = self.estimate_large_model_energy(total_tokens)
+        large_cost = (input_tokens * large_config["cost_per_input_token"] + 
+                     output_tokens * large_config["cost_per_output_token"])
         
         # Calculate savings (only positive if small model is selected)
         if selected_model == "small":
@@ -123,9 +130,15 @@ class ModelRouter:
             energy_saved_percent = 0
             cost_saved_percent = 0
         
+        print(f"[SAVINGS] Selected: {selected_model}")
+        print(f"[SAVINGS] Actual energy: {actual_energy:.4f} Wh, Large energy: {large_energy:.4f} Wh")
+        print(f"[SAVINGS] Actual cost: ${actual_cost:.8f}, Large cost: ${large_cost:.8f}")
+        print(f"[SAVINGS] Energy saved: {energy_saved:.4f} Wh ({energy_saved_percent:.1f}%)")
+        print(f"[SAVINGS] Cost saved: ${cost_saved:.8f} ({cost_saved_percent:.1f}%)")
+        
         return {
             "selected_model": selected_config["name"],
-            "tokens": tokens,
+            "tokens": total_tokens,
             "actual_energy": actual_energy,
             "actual_cost": actual_cost,
             "large_energy": large_energy,
@@ -133,8 +146,7 @@ class ModelRouter:
             "energy_saved": energy_saved,
             "cost_saved": cost_saved,
             "energy_saved_percent": energy_saved_percent,
-            "cost_saved_percent": cost_saved_percent,
-            "co2_saved_grams": energy_saved * 400  # Approximate CO2 per kWh
+            "cost_saved_percent": cost_saved_percent
         }
 
 print("[STARTUP] Initializing ModelRouter...")
@@ -239,7 +251,7 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
                 {savings['energy_saved_percent']:.0f}% saved
             </p>
             <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
-                {savings['energy_saved']:.6f} kWh reduction
+                {savings['energy_saved']:.1f} Wh reduction
             </p>
         </div>
         <div>
@@ -248,22 +260,8 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
                 {savings['cost_saved_percent']:.0f}% saved
             </p>
             <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
-                ${savings['cost_saved']:.6f} reduction
+                ${savings['cost_saved']:.8f} reduction
             </p>
-        </div>
-    </div>
-    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e1e8ed;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <p style="color: #8795a1; margin: 0; font-size: 0.85em;">Environmental Impact</p>
-                <p style="color: #5a6c7d; margin: 5px 0;">
-                    <span style="color: #10b981; font-weight: bold;">{savings['co2_saved_grams']:.1f}g</span> CO₂ prevented
-                </p>
-            </div>
-            <div style="text-align: right;">
-                <p style="color: #8795a1; margin: 0; font-size: 0.85em;">Tokens Processed</p>
-                <p style="color: #5a6c7d; margin: 5px 0; font-weight: bold;">{savings['tokens']:,}</p>
-            </div>
         </div>
     </div>
 </div>
@@ -294,59 +292,41 @@ def get_statistics() -> str:
     
     total_queries = len(router.routing_history)
     
-    # Placeholder company-wide data (will be replaced with Supabase data later)
-    company_total_energy_saved = 12.4567  # kWh
-    company_total_cost_saved = 234.89     # USD
-    company_total_co2_saved = 4982.7      # grams
-    company_total_queries = 8742
+    # Calculate user's total savings
+    user_total_energy_saved = sum(entry["savings"]["energy_saved"] for entry in router.routing_history)
+    user_total_cost_saved = sum(entry["savings"]["cost_saved"] for entry in router.routing_history)
+    
+    # Count how many times each model was used
+    small_model_count = sum(1 for entry in router.routing_history if entry["model"] == "small")
+    large_model_count = sum(1 for entry in router.routing_history if entry["model"] == "large")
     
     stats = f"""
 <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px;">
-    <div style="text-align: center; margin-bottom: 25px;">
-        <p style="color: #475569; font-size: 1.1em; margin: 0; font-weight: 500;">{total_queries} queries processed</p>
-        <p style="color: #64748b; font-size: 0.9em; margin: 10px 0 0 0;">Model used is shown with each response</p>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <h4 style="color: #1e293b; font-size: 1.1em; margin: 0; font-weight: 600;">Your Total Impact</h4>
     </div>
     
-    <div style="border-top: 1px solid #e2e8f0; padding-top: 20px;">
-        <h4 style="color: #1e293b; font-size: 1em; margin: 0 0 15px 0; font-weight: 600; text-align: center;">Company Total Saved</h4>
-        
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
-            <div style="background: #f0fdf4; border-radius: 8px; padding: 12px; text-align: center;">
-                <p style="color: #166534; font-size: 0.8em; margin: 0;">Energy</p>
-                <p style="color: #15803d; font-size: 1.3em; font-weight: bold; margin: 3px 0;">
-                    {company_total_energy_saved:.2f}
-                </p>
-                <p style="color: #166534; font-size: 0.7em; margin: 0;">kWh</p>
-            </div>
-            
-            <div style="background: #eff6ff; border-radius: 8px; padding: 12px; text-align: center;">
-                <p style="color: #1e40af; font-size: 0.8em; margin: 0;">Cost</p>
-                <p style="color: #2563eb; font-size: 1.3em; font-weight: bold; margin: 3px 0;">
-                    ${company_total_cost_saved:.2f}
-                </p>
-                <p style="color: #1e40af; font-size: 0.7em; margin: 0;">USD</p>
-            </div>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
+        <div style="background: #f0fdf4; border-radius: 8px; padding: 15px; text-align: center;">
+            <p style="color: #166534; font-size: 0.9em; margin: 0;">Energy Saved</p>
+            <p style="color: #15803d; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                {user_total_energy_saved:.1f}
+            </p>
+            <p style="color: #166534; font-size: 0.8em; margin: 0;">Wh</p>
         </div>
         
-        <div style="background: #f8fafc; border-radius: 8px; padding: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="text-align: center; flex: 1;">
-                    <p style="color: #64748b; font-size: 0.8em; margin: 0;">CO₂ Prevented</p>
-                    <p style="color: #0f172a; font-size: 1.1em; font-weight: 600; margin: 3px 0;">
-                        {company_total_co2_saved:.1f}g
-                    </p>
-                </div>
-                <div style="text-align: center; flex: 1;">
-                    <p style="color: #64748b; font-size: 0.8em; margin: 0;">Total Queries</p>
-                    <p style="color: #0f172a; font-size: 1.1em; font-weight: 600; margin: 3px 0;">
-                        {company_total_queries:,}
-                    </p>
-                </div>
-            </div>
+        <div style="background: #eff6ff; border-radius: 8px; padding: 15px; text-align: center;">
+            <p style="color: #1e40af; font-size: 0.9em; margin: 0;">Money Saved</p>
+            <p style="color: #2563eb; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                ${user_total_cost_saved:.6f}
+            </p>
+            <p style="color: #1e40af; font-size: 0.8em; margin: 0;">USD</p>
         </div>
-        
-        <p style="color: #94a3b8; font-size: 0.75em; text-align: center; margin: 10px 0 0 0; font-style: italic;">
-            * Company-wide statistics across all users
+    </div>
+    
+    <div style="background: #fefce8; border-radius: 8px; padding: 12px; text-align: center;">
+        <p style="color: #713f12; font-size: 0.9em; margin: 0;">
+            <span style="font-weight: 600;">Model Usage:</span> Small model {small_model_count}x, Large model {large_model_count}x
         </p>
     </div>
 </div>
@@ -367,7 +347,7 @@ custom_css = """
 
 # Create Gradio interface
 with gr.Blocks(
-    title="AI Router - Intelligent Model Selection", 
+    title="Do I really need a huge LLM?", 
     theme=gr.themes.Base(
         primary_hue="blue",
         secondary_hue="gray",
@@ -381,10 +361,10 @@ with gr.Blocks(
             gr.Markdown("""
             <div style="margin-bottom: 30px;">
                 <h1 style="margin: 0; font-size: 2em; font-weight: 600; color: #0f172a;">
-                    AI Model Router
+                    Do I really need a huge LLM?
                 </h1>
                 <p style="margin: 10px 0 0 0; color: #64748b; font-size: 1.1em;">
-                    Automatically selects between small and large language models based on your query
+                    Let's find out! This tool automatically routes your queries to the right-sized model.
                 </p>
             </div>
             """)
@@ -437,7 +417,7 @@ with gr.Blocks(
             # Cumulative stats
             stats_display = gr.HTML(
                 value=get_statistics(),
-                label="Session Overview"
+                label="Your Impact Dashboard"
             )
     
     # Footer with minimal info
@@ -473,7 +453,7 @@ with gr.Blocks(
 
 if __name__ == "__main__":
     print(f"\n{'='*60}")
-    print(f"         AI MODEL ROUTER - STARTUP")
+    print(f"      DO I REALLY NEED A HUGE LLM? - STARTUP")
     print(f"{'='*60}")
     print(f"[LAUNCH] Starting Gradio app...")
     print(f"[LAUNCH] Environment: TOKENIZERS_PARALLELISM={os.environ.get('TOKENIZERS_PARALLELISM')}")
