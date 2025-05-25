@@ -38,7 +38,9 @@ python UI/app.py
 ```
 
 The interface will launch in your browser.
-(add screenshot)
+
+![Interface Screenshot](./images/screenshot.jpg)
+
 2. Write your prompt on the bar at the bottom right of the screen and press 'send'.
 
 3. Our model will analyse your prompt and provide an adequate language model to process it. This model will be displayed on the chat, while data on the environmental impact of your prompt will be shown on the right side of the screen.
@@ -56,6 +58,8 @@ The interface will launch in your browser.
 
 ```
 do-I-really-need-a-huge-llm/
+├── images/
+│   └──screenshot.jpg
 ├── training/
 │   ├──archive/
 │   ├── classified_outputs/
