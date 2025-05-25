@@ -2,88 +2,61 @@ import gradio as gr
 import json
 import time
 from typing import Dict, Tuple, List
-import random
 from bertmodel import predict_label
 import tiktoken
-from ecologits import EcoLogits
-from openai import OpenAI
+# from ecologits import EcoLogits  # Removed - using OpenRouter instead
+# from openai import OpenAI  # Removed - using OpenRouter instead
 from dotenv import load_dotenv
 import os
 import requests
 import json
 
+# Set environment variable to suppress tokenizers warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 load_dotenv()
-OPENAI_API_KEY = ""
-OPENROUTER_API_KEY = ""
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Model configurations with energy consumption and cost estimates
 MODEL_CONFIGS = {
-    "gpt-4": {
-        "name": "GPT-4",
+    "large": {
+        "name": "Claude Opus 4",
         "energy_per_token": 0.0001,  # kWh per token (estimated)
         "cost_per_token": 0.00003,   # USD per token
-        "capabilities": ["complex_reasoning", "coding", "creative_writing", "analysis"],
-        "performance": 10,
         "icon": "🧠"
     },
-    "gpt-3.5": {
-        "name": "GPT-3.5",
-        "energy_per_token": 0.00005,
-        "cost_per_token": 0.000002,
-        "capabilities": ["general_qa", "simple_coding", "summarization"],
-        "performance": 7,
-        "icon": "💡"
-    },
-    "claude-instant": {
-        "name": "Claude Instant",
-        "energy_per_token": 0.00004,
-        "cost_per_token": 0.0000008,
-        "capabilities": ["quick_responses", "basic_analysis", "chat"],
-        "performance": 6,
-        "icon": "⚡"
-    },
-    "llama-7b": {
-        "name": "Llama 7B",
+    "small": {
+        "name": "Mistral Small 24B",
         "energy_per_token": 0.00002,
-        "cost_per_token": 0.0000002,
-        "capabilities": ["basic_qa", "simple_tasks"],
-        "performance": 4,
-        "icon": "🦙"
-    },
-    "Mistral-small3.1": {
-        "name": "Mistral-small3.1",
-        "energy_per_token": 0.00001,
-        "cost_per_token": 0.0000003,
-        "capabilities": ["factual_queries", "current_events", "specific_data"],
-        "performance": 3,
-        "icon": "🔍"
+        "cost_per_token": 0.0000005,
+        "icon": "⚡"
     }
 }
 
 class ModelRouter:
     def __init__(self):
         self.routing_history = []
+        print("[INIT] ModelRouter initialized")
     
     def classify_prompt(self, prompt: str) -> str:
-        return predict_label(prompt)
+        print(f"\n[CLASSIFY] Classifying prompt: '{prompt[:50]}...'")
+        label = predict_label(prompt)
+        print(f"[CLASSIFY] ModernBERT returned label: '{label}'")
+        return label
     
     def select_model(self, prompt: str) -> str:
         """Select the most efficient model based on prompt classification."""
         prompt_type = self.classify_prompt(prompt)
-        # 1) Normalize
+        # Normalize
         key = prompt_type.strip().lower()
+        print(f"[SELECT] Normalized label: '{key}'")
 
-        # 2) Map normalized labels to actual MODEL_CONFIGS keys
-        model_map = {
-            "search engine":       "claude-instant",  
-            "reasoning model":     "gpt-4",
-            "developer model":     "gpt-3.5",
-            "large language model":"gpt-4",
-            "small language model":"llama-7b",
-        }
-
-        # 3) Never KeyError: use .get() with a sensible default
-        selected = model_map.get(key, "gpt-4")  
-        return selected
+        # Map normalized labels to actual MODEL_CONFIGS keys
+        if "small" in key:
+            print(f"[SELECT] Selected: SMALL model (Mistral Small 24B)")
+            return "small"
+        else:
+            print(f"[SELECT] Selected: LARGE model (Claude Opus 4)")
+            return "large"
     
 
     def estimate_tokens(self, 
@@ -98,6 +71,7 @@ class ModelRouter:
         encoding = tiktoken.encoding_for_model(model_name)
         # 1) exact prompt tokenization
         prompt_tokens = len(encoding.encode(prompt))
+        print(f"[TOKENS] Prompt tokens: {prompt_tokens}")
 
         if response is not None:
             response_tokens = len(encoding.encode(response))
@@ -108,77 +82,54 @@ class ModelRouter:
             # fallback to a default budget
             response_tokens = 0
 
-        return prompt_tokens + response_tokens
+        total_tokens = prompt_tokens + response_tokens
+        print(f"[TOKENS] Response tokens: {response_tokens}, Total: {total_tokens}")
+        return total_tokens
     
-    def gpt4o_get_energy(self, prompt: str) -> float:
+    def estimate_large_model_energy(self, tokens: int) -> float:
         """
-        Calculates baseline energy consumption for a given prompt using gpt-4o-mini via EcoLogits.
-        NOTE: Ensure EcoLogits is initialized appropriately for your application.
-            Calling EcoLogits.init() on every function call might not be optimal.
-            Consider initializing it once globally if appropriate for the library's design.
+        Estimate large model energy consumption based on tokens.
+        Using empirical estimates for energy consumption.
         """
-        try:
-            # Initialize EcoLogits - Consider if this needs to be done globally once
-            EcoLogits.init()
-            
-            client = OpenAI(
-                api_key= OPENAI_API_KEY
-            )
-
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "user", "content": prompt }
-                ],
-                # Ensure that 'impacts' are requested if EcoLogits requires specific parameters
-                # For example, some wrappers might need extra_body={"impacts": True} or similar
-            )
-            # Accessing impacts can vary based on the EcoLogits version and OpenAI library version.
-            # The following assumes 'response.impacts.energy.value' is the correct path.
-            # If EcoLogits patches the response object directly.
-            if hasattr(response, 'impacts') and response.impacts and hasattr(response.impacts, 'energy') and response.impacts.energy:
-                energy_consumption = response.impacts.energy.value
-                #ghg_emission = response.impacts.gwp.value
-                return energy_consumption
-            else:
-                print("Warning: EcoLogits impact data not found in response. Returning 0 for baseline.")
-                # Fallback if impact data is not available as expected
-                # You might want to raise an error or handle this differently
-                return 0
-        except Exception as e:
-            print(f"Error in baseline_energy function: {e}")
-            # Fallback or re-raise error
-            return 0 # Return a default or handle error appropriately
+        large_config = MODEL_CONFIGS["large"]
+        return tokens * large_config["energy_per_token"]
     
     def calculate_savings(self, selected_model: str, prompt: str) -> Dict:
-        """Calculate energy and cost savings compared to using GPT-4"""
+        """Calculate energy and cost savings compared to using the large model"""
+        print(f"[SAVINGS] Calculating for model: {selected_model}")
         tokens = self.estimate_tokens(prompt)
         
         selected_config = MODEL_CONFIGS[selected_model]
-        gpt4o_config = MODEL_CONFIGS["gpt-4"]
+        large_config = MODEL_CONFIGS["large"]
         
         # Calculate actual usage
         actual_energy = tokens * selected_config["energy_per_token"]
         actual_cost = tokens * selected_config["cost_per_token"]
         
-        # Calculate GPT-4 usage
-        gpt4o_energy_temp = self.gpt4o_get_energy(prompt)
-        gpt4o_energy = (gpt4o_energy_temp.min + gpt4o_energy_temp.max) / 2
-        gpt4o_cost = tokens * gpt4o_config["cost_per_token"]
+        # Calculate large model usage
+        large_energy = self.estimate_large_model_energy(tokens)
+        large_cost = tokens * large_config["cost_per_token"]
         
-        # Calculate savings
-        energy_saved = gpt4o_energy - actual_energy
-        cost_saved = gpt4o_cost - actual_cost
-        energy_saved_percent = (energy_saved / gpt4o_energy) * 100 if gpt4o_energy > 0 else 0
-        cost_saved_percent = (cost_saved / gpt4o_cost) * 100 if gpt4o_cost > 0 else 0
+        # Calculate savings (only positive if small model is selected)
+        if selected_model == "small":
+            energy_saved = large_energy - actual_energy
+            cost_saved = large_cost - actual_cost
+            energy_saved_percent = (energy_saved / large_energy) * 100 if large_energy > 0 else 0
+            cost_saved_percent = (cost_saved / large_cost) * 100 if large_cost > 0 else 0
+        else:
+            # No savings if using the large model
+            energy_saved = 0
+            cost_saved = 0
+            energy_saved_percent = 0
+            cost_saved_percent = 0
         
         return {
             "selected_model": selected_config["name"],
             "tokens": tokens,
             "actual_energy": actual_energy,
             "actual_cost": actual_cost,
-            "gpt4o_energy": gpt4o_energy,
-            "gpt4o_cost": gpt4o_cost,
+            "large_energy": large_energy,
+            "large_cost": large_cost,
             "energy_saved": energy_saved,
             "cost_saved": cost_saved,
             "energy_saved_percent": energy_saved_percent,
@@ -186,45 +137,86 @@ class ModelRouter:
             "co2_saved_grams": energy_saved * 400  # Approximate CO2 per kWh
         }
 
+print("[STARTUP] Initializing ModelRouter...")
 router = ModelRouter()
+print("[STARTUP] ModelRouter ready")
+print(f"[STARTUP] Available models: {list(MODEL_CONFIGS.keys())}")
+print(f"[STARTUP] OpenRouter API Key: {'SET' if OPENROUTER_API_KEY else 'NOT SET'}")
 
 def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, str]:
     """Process the user message and return response with savings info"""
+    print(f"\n{'='*60}")
+    print(f"[PROCESS] New message received: '{message[:100]}...'")
     
     # Route to appropriate model
     selected_model = router.select_model(message)
     model_config = MODEL_CONFIGS[selected_model]
+    print(f"[PROCESS] Using model config: {model_config['name']}")
     
     # Calculate savings
+    print(f"[PROCESS] Calculating savings...")
     savings = router.calculate_savings(selected_model, message)
+    print(f"[PROCESS] Savings calculated: {savings['energy_saved_percent']:.1f}% energy, {savings['cost_saved_percent']:.1f}% cost")
     
     open_router_model_dict = {
-        "gpt-4": "openai/gpt-4o",
-        "llama-7b": "alfredpros/codellama-7b-instruct-solidity",
+        "large": "anthropic/claude-opus-4",
+        "small": "mistralai/mistral-small-24b-instruct-2501"
     }
-    response = requests.post(
-    url="https://openrouter.ai/api/v1/chat/completions",
-    headers={
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    },
-    data=json.dumps({
-        "model": open_router_model_dict.get(selected_model, "openai/gpt-4o"), # Optional
-        "messages": [
-        {
-            "role": "user",
-            "content": message
-        }
-        ]
-    })
-    )   
-    data = response.json()
-    answer = data["choices"][0]["message"]["content"]
-    # Simulate model response (in real implementation, this would call actual APIs)
-    if selected_model == "search_engine":
-        response = f"Based on search results: [This would be real search results for: {message}]\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
+    # Check if API key is available
+    if not OPENROUTER_API_KEY:
+        print(f"[API] No OpenRouter API key found - running in DEMO MODE")
+        answer = f"[Demo Mode] This would be a response from {model_config['name']} to: {message[:50]}..."
     else:
-        response = f"{answer}\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
+        print(f"[API] OpenRouter API key found: {OPENROUTER_API_KEY[:10]}...")
+        try:
+            model_id = open_router_model_dict[selected_model]
+            print(f"[API] Calling OpenRouter with model: {model_id}")
+            
+            request_data = {
+                "model": model_id,
+                "messages": [
+                {
+                    "role": "user",
+                    "content": message
+                }
+                ]
+            }
+            print(f"[API] Request data: {json.dumps(request_data, indent=2)[:200]}...")
+            
+            response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            data=json.dumps(request_data)
+            )
+            
+            # Debug: print response status and content
+            print(f"[API] Response Status Code: {response.status_code}")
+            print(f"[API] Response Headers: {dict(response.headers)}")
+            
+            if response.status_code != 200:
+                print(f"[API ERROR] Full response: {response.text}")
+                answer = f"[API Error {response.status_code}] {response.text[:200]}..."
+            else:
+                data = response.json()
+                print(f"[API] Response keys: {list(data.keys())}")
+                
+                if "choices" in data and len(data["choices"]) > 0:
+                    answer = data["choices"][0]["message"]["content"]
+                    print(f"[API] Successfully got response: {answer[:100]}...")
+                else:
+                    print(f"[API ERROR] Unexpected response format: {json.dumps(data, indent=2)}")
+                    answer = f"[Error] Unexpected response format from OpenRouter API"
+        except Exception as e:
+            print(f"[API EXCEPTION] Error type: {type(e).__name__}")
+            print(f"[API EXCEPTION] Error message: {str(e)}")
+            import traceback
+            print(f"[API EXCEPTION] Traceback:\n{traceback.format_exc()}")
+            answer = f"[Error] Failed to get response from {model_config['name']}. Error: {str(e)}"
+    # Format the response with model info
+    response = f"{answer}\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
     
     # Format model info
     model_info = f"""
@@ -284,6 +276,9 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
         "model": selected_model,
         "savings": savings
     })
+    
+    print(f"[PROCESS] Response formatted, returning to UI")
+    print(f"{'='*60}\n")
     
     return response, model_info, savings_info
 
@@ -386,10 +381,10 @@ with gr.Blocks(
             gr.Markdown("""
             <div style="margin-bottom: 30px;">
                 <h1 style="margin: 0; font-size: 2em; font-weight: 600; color: #0f172a;">
-                    AI Efficiency Router
+                    AI Model Router
                 </h1>
                 <p style="margin: 10px 0 0 0; color: #64748b; font-size: 1.1em;">
-                    Intelligent model selection for optimal performance and sustainability
+                    Automatically selects between small and large language models based on your query
                 </p>
             </div>
             """)
@@ -449,7 +444,7 @@ with gr.Blocks(
     with gr.Row():
         gr.Markdown("""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 0.85em;">
-            <p style="margin: 5px 0;">Comparing against GPT-4 baseline • Real-time efficiency tracking • Environmental impact monitoring</p>
+            <p style="margin: 5px 0;">Comparing small vs large model efficiency • Real-time tracking • Environmental impact monitoring</p>
         </div>
         """)
     
@@ -477,4 +472,14 @@ with gr.Blocks(
     msg.submit(lambda: "", outputs=[msg])
 
 if __name__ == "__main__":
+    print(f"\n{'='*60}")
+    print(f"         AI MODEL ROUTER - STARTUP")
+    print(f"{'='*60}")
+    print(f"[LAUNCH] Starting Gradio app...")
+    print(f"[LAUNCH] Environment: TOKENIZERS_PARALLELISM={os.environ.get('TOKENIZERS_PARALLELISM')}")
+    print(f"[LAUNCH] Models configured:")
+    for k, v in MODEL_CONFIGS.items():
+        print(f"         - {k}: {v['name']} ({v['icon']})")
+    print(f"[LAUNCH] OpenRouter API Key: {'✓ SET' if OPENROUTER_API_KEY else '✗ NOT SET (Demo Mode)'}")
+    print(f"{'='*60}\n")
     demo.launch(share=False)

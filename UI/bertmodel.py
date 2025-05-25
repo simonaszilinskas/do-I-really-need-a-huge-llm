@@ -1,31 +1,30 @@
 # my_text_classifier.py
 
-from transformers import AutoTokenizer, ModernBertForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 from typing import Optional
 from pathlib import Path
 
-# Replace this path with the location of your fine-tuned ModernBERT model
-_THIS_DIR = Path(__file__).resolve().parent
-_MODEL_DIR = str(_THIS_DIR.parent / "model/ecorouter-modernbert")
+# Use the model from Hugging Face
+_MODEL_NAME = "monsimas/ModernBERT-ecoRouter"
 
 # Load tokenizer and model at import time so we don’t pay the I/O cost on every call
 try:
-    _TOKENIZER = AutoTokenizer.from_pretrained(_MODEL_DIR)
+    _TOKENIZER = AutoTokenizer.from_pretrained(_MODEL_NAME)
 except Exception as e:
-    raise RuntimeError(f"Failed to load tokenizer from {_MODEL_DIR}: {e}")
+    raise RuntimeError(f"Failed to load tokenizer from {_MODEL_NAME}: {e}")
 
 try:
-    _MODEL = ModernBertForSequenceClassification.from_pretrained(_MODEL_DIR)
+    _MODEL = AutoModelForSequenceClassification.from_pretrained(_MODEL_NAME)
     _MODEL.eval()  # evaluation mode
 except Exception as e:
-    raise RuntimeError(f"Failed to load model from {_MODEL_DIR}: {e}")
+    raise RuntimeError(f"Failed to load model from {_MODEL_NAME}: {e}")
 
 
 def predict_label(
     text: str,
     tokenizer: Optional[AutoTokenizer] = None,
-    model: Optional[ModernBertForSequenceClassification] = None
+    model: Optional[AutoModelForSequenceClassification] = None
 ) -> str:
     """
     Classify a single string and return the predicted label.

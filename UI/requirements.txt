@@ -1,1 +1,6 @@
 gradio==4.16.0
+tiktoken
+python-dotenv
+transformers
+torch
+requests
