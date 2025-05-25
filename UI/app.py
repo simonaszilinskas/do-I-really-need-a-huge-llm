@@ -93,13 +93,20 @@ class ModelRouter:
         large_config = MODEL_CONFIGS["large"]
         return tokens * large_config["energy_per_token"]
     
-    def calculate_savings(self, selected_model: str, prompt: str) -> Dict:
+    def calculate_savings(self, selected_model: str, prompt: str, response: str = None) -> Dict:
         """Calculate energy and cost savings compared to using the large model"""
         print(f"[SAVINGS] Calculating for model: {selected_model}")
         
         # Calculate input and output tokens separately
         input_tokens = max(1, len(prompt) // 4)  # Minimum 1 token
-        output_tokens = max(1, input_tokens)  # Estimate same length response, minimum 1
+        
+        if response:
+            # Use actual response length if available
+            output_tokens = max(1, len(response) // 4)
+        else:
+            # Estimate if no response yet (for preview)
+            output_tokens = max(10, input_tokens)  # Assume at least 10 tokens response
+        
         total_tokens = input_tokens + output_tokens
         
         print(f"[SAVINGS] Input tokens: {input_tokens}, Output tokens: {output_tokens}")
@@ -166,10 +173,10 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
     model_config = MODEL_CONFIGS[selected_model]
     print(f"[PROCESS] Using model config: {model_config['name']}")
     
-    # Calculate savings
-    print(f"[PROCESS] Calculating savings...")
-    savings = router.calculate_savings(selected_model, message)
-    print(f"[PROCESS] Savings calculated: {savings['energy_saved_percent']:.1f}% energy, {savings['cost_saved_percent']:.1f}% cost")
+    # Initial savings estimate (will be recalculated after getting response)
+    print(f"[PROCESS] Calculating initial savings estimate...")
+    initial_savings = router.calculate_savings(selected_model, message)
+    print(f"[PROCESS] Initial estimate: {initial_savings['energy_saved_percent']:.1f}% energy, {initial_savings['cost_saved_percent']:.1f}% cost")
     
     open_router_model_dict = {
         "large": "anthropic/claude-opus-4",
@@ -228,6 +235,12 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
             import traceback
             print(f"[API EXCEPTION] Traceback:\n{traceback.format_exc()}")
             answer = f"[Error] Failed to get response from {model_config['name']}. Error: {str(e)}"
+    
+    # Recalculate savings with actual response
+    print(f"[PROCESS] Recalculating savings with actual response...")
+    savings = router.calculate_savings(selected_model, message, answer)
+    print(f"[PROCESS] Final savings: {savings['energy_saved_percent']:.1f}% energy, {savings['cost_saved_percent']:.1f}% cost")
+    
     # Format the response with model info
     response = f"{answer}\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
     
@@ -249,7 +262,7 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
 <div style="background: #ffffff; border: 1px solid #fed7aa; border-radius: 12px; padding: 20px;">
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
         <div>
-            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Energy Consumption</p>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">🔥 Energy Consumption</p>
             <p style="color: #ea580c; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
                 {savings['actual_energy']:.1f} Wh
             </p>
@@ -258,7 +271,7 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
             </p>
         </div>
         <div>
-            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Cost Impact</p>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">💸 Cost Impact</p>
             <p style="color: #dc2626; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
                 ${savings['actual_cost']:.6f}
             </p>
@@ -275,7 +288,7 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
 <div style="background: #ffffff; border: 1px solid #e1e8ed; border-radius: 12px; padding: 20px;">
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
         <div>
-            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Energy Efficiency</p>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">⚡ Energy Efficiency</p>
             <p style="color: #22c55e; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
                 {savings['energy_saved_percent']:.1f}% saved
             </p>
@@ -287,7 +300,7 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
             </p>
         </div>
         <div>
-            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Cost Optimization</p>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">💰 Cost Optimization</p>
             <p style="color: #3b82f6; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
                 {savings['cost_saved_percent']:.1f}% saved
             </p>
@@ -321,7 +334,7 @@ def get_statistics() -> str:
         return """
 <div style="background: #f8fafc; border-radius: 12px; padding: 30px; text-align: center; color: #64748b;">
     <p style="margin: 0;">No queries processed yet</p>
-    <p style="margin: 10px 0 0 0; font-size: 0.9em;">Start a conversation to see your impact metrics</p>
+    <p style="margin: 10px 0 0 0; font-size: 0.9em;">💬 Start a conversation to see your impact metrics</p>
 </div>
 """
     
@@ -338,12 +351,12 @@ def get_statistics() -> str:
     stats = f"""
 <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px;">
     <div style="text-align: center; margin-bottom: 20px;">
-        <h4 style="color: #1e293b; font-size: 1.1em; margin: 0; font-weight: 600;">Your Total Impact</h4>
+        <h4 style="color: #1e293b; font-size: 1.1em; margin: 0; font-weight: 600;">🌍 Your Total Impact</h4>
     </div>
     
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
         <div style="background: #f0fdf4; border-radius: 8px; padding: 15px; text-align: center;">
-            <p style="color: #166534; font-size: 0.9em; margin: 0;">Energy Saved</p>
+            <p style="color: #166534; font-size: 0.9em; margin: 0;">🌱 Energy Saved</p>
             <p style="color: #15803d; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
                 {user_total_energy_saved:.1f}
             </p>
@@ -351,7 +364,7 @@ def get_statistics() -> str:
         </div>
         
         <div style="background: #eff6ff; border-radius: 8px; padding: 15px; text-align: center;">
-            <p style="color: #1e40af; font-size: 0.9em; margin: 0;">Money Saved</p>
+            <p style="color: #1e40af; font-size: 0.9em; margin: 0;">💵 Money Saved</p>
             <p style="color: #2563eb; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
                 ${user_total_cost_saved:.6f}
             </p>
@@ -396,10 +409,10 @@ with gr.Blocks(
             gr.Markdown("""
             <div style="margin-bottom: 30px;">
                 <h1 style="margin: 0; font-size: 2em; font-weight: 600; color: #0f172a;">
-                    Do I really need a huge LLM?
+                    🤔 Do I *really* need a huge LLM?
                 </h1>
                 <p style="margin: 10px 0 0 0; color: #64748b; font-size: 1.1em;">
-                    Let's find out! This tool automatically routes your queries to the right-sized model.
+                    Let's find out! This tool automatically routes your queries to the right-sized model. 🎯
                 </p>
             </div>
             """)
@@ -415,14 +428,14 @@ with gr.Blocks(
             
             with gr.Row():
                 msg = gr.Textbox(
-                    placeholder="Type your message here...",
+                    placeholder="💭 Type your message here...",
                     show_label=False,
                     scale=9,
                     container=False,
                     elem_classes=["message-input"]
                 )
                 submit = gr.Button(
-                    "Send",
+                    "Send 🚀",
                     variant="primary",
                     scale=1,
                     min_width=100
@@ -433,7 +446,7 @@ with gr.Blocks(
             model_display = gr.HTML(
                 value="""
                 <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center; color: #64748b;">
-                    <p style="margin: 0;">Model selection will appear here</p>
+                    <p style="margin: 0;">🤖 Model selection will appear here</p>
                 </div>
                 """,
                 label="Selected Model"
@@ -443,7 +456,7 @@ with gr.Blocks(
             savings_display = gr.HTML(
                 value="""
                 <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center; color: #64748b;">
-                    <p style="margin: 0;">Efficiency metrics will appear here</p>
+                    <p style="margin: 0;">📊 Efficiency metrics will appear here</p>
                 </div>
                 """,
                 label="Efficiency Metrics"
@@ -459,7 +472,7 @@ with gr.Blocks(
     with gr.Row():
         gr.Markdown("""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 0.85em;">
-            <p style="margin: 5px 0;">Comparing small vs large model efficiency • Real-time tracking • Environmental impact monitoring</p>
+            <p style="margin: 5px 0;">🔍 Comparing small vs large model efficiency • 📈 Real-time tracking • 🌎 Environmental impact monitoring</p>
         </div>
         """)
     
