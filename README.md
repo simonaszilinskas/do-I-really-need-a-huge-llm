@@ -15,6 +15,11 @@ This small language model proposes other language models based on input complexi
 - [WildChat dataset](https://huggingface.co/datasets/allenai/WildChat)
 - [ShareGPT52K](https://huggingface.co/datasets/RyokoAI/ShareGPT52K/tree/main/old)
 
+## Models used
+
+- [ModernBERT](https://huggingface.co/answerdotai/ModernBERT-large)
+- [Mistral AI v1](https://docs.mistral.ai/api/)
+
 ## Installation
 
 ```bash
@@ -48,16 +53,13 @@ The interface will launch in your browser.
 
 ```
 do-I-really-need-a-huge-llm/
-├── manifest.json
-├── js/
-│   ├── content.js
-│   └── content-data.js
-├── css/
-│   └── styles.css
-├── icons/
-│   ├── icon16.png
-│   ├── icon48.png
-│   └── icon128.png
+├── training/
+│   ├──archive/
+│   ├── classified_outputs/
+│   ├── merged_prompts_input.jsonl
+│   ├── mistral_predictions_final.csv
+│   ├── mistral_predictions_final.jsonl
+│   └── product_classification.ipynb
 ├── UI/
 │   ├──app.py
 │   ├──bertmodel.py
