@@ -1,6 +1,6 @@
 # Do I really need a huge LLM?
 
-This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage.
+This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage. This repo was created at the {Tech: Paris} AI Hackathon on May 25th/26th 2025.
 
 ## Features
 
@@ -9,6 +9,11 @@ This small language model proposes other language models based on input complexi
 - **Cost Optimization**: Shows monetary savings compared to using high-end models
 - **Real-time Statistics**: Displays cumulative savings and model usage distribution
 - **Multiple Model Support**: Routes between LLMs and SLMs.
+
+## Data sources used
+
+- [WildChat dataset](https://huggingface.co/datasets/allenai/WildChat)
+- [ShareGPT52K](https://huggingface.co/datasets/RyokoAI/ShareGPT52K/tree/main/old)
 
 ## Installation
 
@@ -61,25 +66,11 @@ do-I-really-need-a-huge-llm/
 
 ```
 
-## Fonctionnalités
+## Who are we?
 
-- ✅ Activation uniquement sur l'URL spécifique
-- ✅ Bouton flottant (FAB)
-- ✅ Interface modale avec onglets
-- ✅ Contenu pour l'impact environnemental
-- ✅ Boutons interactifs (Prompt, Cartes débat, Ressources, FAQ)
-- ✅ Question ultime révélable
-- ✅ Architecture modulaire et extensible
+- [Simonas Zilinkas](https://github.com/simonaszilinskas)
+- [Mario Rocha](https://github.com/marioluisrocha)
+- [Jonas Fischer](https://github.com/JonasFischer1)
+- [Charlotte Cullip](https://github.com/ccullip)
+- [Amin Seffo](https://github.com/AminSeffo)
 
-## Développement
-
-Le contenu est facilement modifiable dans le fichier `js/content.js` dans l'objet `CONTENT_DATA`.
-
-Pour ajouter du contenu aux autres onglets, modifiez les sections correspondantes dans `CONTENT_DATA.bias` et `CONTENT_DATA.sovereignty`.
-
-## Note
-
-Les icônes sont actuellement des placeholders. Remplacez-les par de vraies icônes PNG aux dimensions appropriées :
-- icon16.png : 16x16 pixels
-- icon48.png : 48x48 pixels
-- icon128.png : 128x128 pixels
