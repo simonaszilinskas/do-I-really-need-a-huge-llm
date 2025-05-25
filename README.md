@@ -6,8 +6,6 @@ This small language model proposes other language models based on input complexi
 
 🚀 Hugging Face space: https://huggingface.co/spaces/monsimas/do-i-really-need-a-huge-llm
 
-We built this project at the {Tech: Paris} AI Hackathon on May 24th/25th, 2025 🛠️.
-
 https://github.com/user-attachments/assets/3b412e9b-af6b-4b25-855d-8c2fc00c6903
 
 
@@ -75,4 +73,8 @@ do-I-really-need-a-huge-llm/
 - [Jonas Fischer](https://github.com/JonasFischer1)
 - [Charlotte Cullip](https://github.com/ccullip)
 - [Amin Seffo](https://github.com/AminSeffo)
+
+We built this project at the {Tech: Paris} AI Hackathon on May 24th/25th, 2025 🛠️.
+
+![PHOTO-2025-05-25-13-55-30](https://github.com/user-attachments/assets/5c3d8431-d413-43d6-9f0a-adc70b1035c0)
 
