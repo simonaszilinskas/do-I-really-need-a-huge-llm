@@ -1,6 +1,8 @@
 # Do I really need a huge LLM?
 
 This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage. This repo was created at the {Tech: Paris} AI Hackathon on May 25th/26th 2025.
+This model is also available at [HuggingFace.co].(https://huggingface.co/monsimas/ModernBERT-ecoRouter)
+
 
 ## Features
 
@@ -35,7 +37,7 @@ python UI/app.py
 ```
 
 The interface will launch in your browser.
-
+(add screenshot)
 2. Write your prompt on the bar at the bottom right of the screen and press 'send'.
 
 3. Our model will analyse your prompt and provide an adequate language model to process it. This model will be displayed on the chat, while data on the environmental impact of your prompt will be shown on the right side of the screen.
