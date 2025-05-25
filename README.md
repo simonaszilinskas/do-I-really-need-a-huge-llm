@@ -47,13 +47,6 @@ The interface will launch on your browser:
 
 4. This repo also contains the methodology we used to train our model. Feel free to adapt it and retrain it to your specific needs!
 
-## How It Works
-
-1. **Prompt Classification**: Analyzes query complexity and type
-2. **Model Selection**: Chooses the most efficient model for the task
-3. **Savings Calculation**: Compares against GPT-4 baseline usage
-4. **Response Generation**: Processes query with selected model
-
 ## Structure
 
 ```
