@@ -98,8 +98,8 @@ class ModelRouter:
         print(f"[SAVINGS] Calculating for model: {selected_model}")
         
         # Calculate input and output tokens separately
-        input_tokens = len(prompt) // 4
-        output_tokens = input_tokens  # Estimate same length response
+        input_tokens = max(1, len(prompt) // 4)  # Minimum 1 token
+        output_tokens = max(1, input_tokens)  # Estimate same length response, minimum 1
         total_tokens = input_tokens + output_tokens
         
         print(f"[SAVINGS] Input tokens: {input_tokens}, Output tokens: {output_tokens}")
@@ -146,7 +146,8 @@ class ModelRouter:
             "energy_saved": energy_saved,
             "cost_saved": cost_saved,
             "energy_saved_percent": energy_saved_percent,
-            "cost_saved_percent": cost_saved_percent
+            "cost_saved_percent": cost_saved_percent,
+            "is_large_model": selected_model == "large"  # Add flag for template
         }
 
 print("[STARTUP] Initializing ModelRouter...")
@@ -241,26 +242,60 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
 </div>
 """
     
-    # Format savings information with a more minimal design
-    savings_info = f"""
+    # Format savings information with conditional display based on model
+    if savings['is_large_model']:
+        # Show actual consumption for large model with warning colors
+        savings_info = f"""
+<div style="background: #ffffff; border: 1px solid #fed7aa; border-radius: 12px; padding: 20px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Energy Consumption</p>
+            <p style="color: #ea580c; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                {savings['actual_energy']:.1f} Wh
+            </p>
+            <p style="color: #7c2d12; font-size: 0.85em; margin: 0;">
+                High energy usage
+            </p>
+        </div>
+        <div>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Cost Impact</p>
+            <p style="color: #dc2626; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                ${savings['actual_cost']:.6f}
+            </p>
+            <p style="color: #991b1b; font-size: 0.85em; margin: 0;">
+                Premium pricing
+            </p>
+        </div>
+    </div>
+</div>
+"""
+    else:
+        # Show savings for small model with positive colors
+        savings_info = f"""
 <div style="background: #ffffff; border: 1px solid #e1e8ed; border-radius: 12px; padding: 20px;">
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
         <div>
             <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Energy Efficiency</p>
             <p style="color: #22c55e; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
-                {savings['energy_saved_percent']:.0f}% saved
+                {savings['energy_saved_percent']:.1f}% saved
             </p>
             <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
                 {savings['energy_saved']:.1f} Wh reduction
+            </p>
+            <p style="color: #8795a1; font-size: 0.75em; margin: 3px 0 0 0; font-style: italic;">
+                vs. using large model
             </p>
         </div>
         <div>
             <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Cost Optimization</p>
             <p style="color: #3b82f6; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
-                {savings['cost_saved_percent']:.0f}% saved
+                {savings['cost_saved_percent']:.1f}% saved
             </p>
             <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
                 ${savings['cost_saved']:.8f} reduction
+            </p>
+            <p style="color: #8795a1; font-size: 0.75em; margin: 3px 0 0 0; font-style: italic;">
+                vs. using large model
             </p>
         </div>
     </div>
