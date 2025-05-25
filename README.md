@@ -59,18 +59,21 @@ The interface will launch on your browser:
 ```
 do-I-really-need-a-huge-llm/
 ├── images/
-│   └──screenshot.jpg
-├── training/
-│   ├──archive/
+│   └── screenshot.jpg
+├── preprocessing/
+│   ├── data/
+│   │   ├── separated_test_data.json
+│   │   ├── separated_train_data.json
+│   │   └── separated_validation_data.json
 │   ├── classified_outputs/
 │   ├── merged_prompts_input.jsonl
 │   ├── mistral_predictions_final.csv
 │   ├── mistral_predictions_final.jsonl
 │   └── product_classification.ipynb
 ├── UI/
-│   ├──app.py
-│   ├──bertmodel.py
-│   └──requirements.txt
+│   ├── app.py
+│   ├── bertmodel.py
+│   └── requirements.txt
 └── README.md
 
 ```
