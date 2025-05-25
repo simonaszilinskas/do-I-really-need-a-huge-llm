@@ -7,11 +7,11 @@ We created this repo at the {Tech: Paris} AI Hackathon on May 24th/25th, 2025.
 
 ## Features
 
-- **Smart Routing**: Analyzes prompts and selects the most appropriate model
-- **Energy Tracking**: Calculates energy consumption and CO₂ emissions saved
-- **Cost Optimization**: Shows monetary savings compared to using high-end models
-- **Real-time Statistics**: Displays cumulative savings and model usage distribution
-- **Multiple Model Support**: Routes between LLMs and SLMs.
+- **Smart routing**: Analyzes prompts and selects the most appropriate model
+- **Energy tracking**: Calculates energy consumption and CO₂ emissions saved
+- **Cost optimization**: Shows monetary savings compared to using high-end models
+- **Real-time statistics**: Displays cumulative savings and model usage distribution
+- **Multiple model support**: Routes between LLMs and SLMs
 
 ## Data sources used
 
@@ -21,7 +21,7 @@ We created this repo at the {Tech: Paris} AI Hackathon on May 24th/25th, 2025.
 ## Models used
 
 - [ModernBERT](https://huggingface.co/answerdotai/ModernBERT-large)
-- [Mistral AI v1](https://docs.mistral.ai/api/)
+- [Mistral Large](https://docs.mistral.ai/getting-started/models/models_overview/)
 
 ## Installation
 
@@ -36,10 +36,6 @@ pip install -r UI/requirements.txt
 ```bash
 python UI/app.py
 ```
-
-The interface will launch on your browser:
-
-![Interface Screenshot](./images/screenshot.jpg)
 
 2. Write your prompt in the search bar at the bottom left of the screen and press 'send'.
 
