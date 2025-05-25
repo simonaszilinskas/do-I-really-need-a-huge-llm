@@ -5,7 +5,16 @@ from typing import Dict, Tuple, List
 import random
 from bertmodel import predict_label
 import tiktoken
+from ecologits import EcoLogits
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
+import requests
+import json
 
+load_dotenv()
+OPENAI_API_KEY = ""
+OPENROUTER_API_KEY = ""
 # Model configurations with energy consumption and cost estimates
 MODEL_CONFIGS = {
     "gpt-4": {
@@ -40,10 +49,10 @@ MODEL_CONFIGS = {
         "performance": 4,
         "icon": "🦙"
     },
-    "search_engine": {
-        "name": "Search Engine",
+    "Mistral-small3.1": {
+        "name": "Mistral-small3.1",
         "energy_per_token": 0.00001,
-        "cost_per_token": 0.0000001,
+        "cost_per_token": 0.0000003,
         "capabilities": ["factual_queries", "current_events", "specific_data"],
         "performance": 3,
         "icon": "🔍"
@@ -58,19 +67,23 @@ class ModelRouter:
         return predict_label(prompt)
     
     def select_model(self, prompt: str) -> str:
-        """Select the most efficient model based on prompt classification"""
+        """Select the most efficient model based on prompt classification."""
         prompt_type = self.classify_prompt(prompt)
-        
-        # Model selection logic
+        # 1) Normalize
+        key = prompt_type.strip().lower()
+
+        # 2) Map normalized labels to actual MODEL_CONFIGS keys
         model_map = {
-            "⁠Search engine": "search_engine",
-            "⁠Reasoning model": "gpt-4",
-            "⁠Developer model": "gpt-3.5",
-            "⁠Large language model": "gpt-4",
-            "⁠Small language model": "llama-7b",
+            "search engine":       "claude-instant",  
+            "reasoning model":     "gpt-4",
+            "developer model":     "gpt-3.5",
+            "large language model":"gpt-4",
+            "small language model":"llama-7b",
         }
 
-        return model_map.get(prompt_type, "claude-instant")
+        # 3) Never KeyError: use .get() with a sensible default
+        selected = model_map.get(key, "gpt-4")  
+        return selected
     
 
     def estimate_tokens(self, 
@@ -97,34 +110,75 @@ class ModelRouter:
 
         return prompt_tokens + response_tokens
     
+    def gpt4o_get_energy(self, prompt: str) -> float:
+        """
+        Calculates baseline energy consumption for a given prompt using gpt-4o-mini via EcoLogits.
+        NOTE: Ensure EcoLogits is initialized appropriately for your application.
+            Calling EcoLogits.init() on every function call might not be optimal.
+            Consider initializing it once globally if appropriate for the library's design.
+        """
+        try:
+            # Initialize EcoLogits - Consider if this needs to be done globally once
+            EcoLogits.init()
+            
+            client = OpenAI(
+                api_key= OPENAI_API_KEY
+            )
+
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "user", "content": prompt }
+                ],
+                # Ensure that 'impacts' are requested if EcoLogits requires specific parameters
+                # For example, some wrappers might need extra_body={"impacts": True} or similar
+            )
+            # Accessing impacts can vary based on the EcoLogits version and OpenAI library version.
+            # The following assumes 'response.impacts.energy.value' is the correct path.
+            # If EcoLogits patches the response object directly.
+            if hasattr(response, 'impacts') and response.impacts and hasattr(response.impacts, 'energy') and response.impacts.energy:
+                energy_consumption = response.impacts.energy.value
+                #ghg_emission = response.impacts.gwp.value
+                return energy_consumption
+            else:
+                print("Warning: EcoLogits impact data not found in response. Returning 0 for baseline.")
+                # Fallback if impact data is not available as expected
+                # You might want to raise an error or handle this differently
+                return 0
+        except Exception as e:
+            print(f"Error in baseline_energy function: {e}")
+            # Fallback or re-raise error
+            return 0 # Return a default or handle error appropriately
+    
     def calculate_savings(self, selected_model: str, prompt: str) -> Dict:
         """Calculate energy and cost savings compared to using GPT-4"""
         tokens = self.estimate_tokens(prompt)
         
         selected_config = MODEL_CONFIGS[selected_model]
-        gpt4_config = MODEL_CONFIGS["gpt-4"]
+        gpt4o_config = MODEL_CONFIGS["gpt-4"]
         
         # Calculate actual usage
         actual_energy = tokens * selected_config["energy_per_token"]
         actual_cost = tokens * selected_config["cost_per_token"]
         
         # Calculate GPT-4 usage
-        gpt4_energy = tokens * gpt4_config["energy_per_token"]
-        gpt4_cost = tokens * gpt4_config["cost_per_token"]
+        gpt4o_energy_temp = self.gpt4o_get_energy(prompt)
+        gpt4o_energy = (gpt4o_energy_temp.min + gpt4o_energy_temp.max) / 2
+        gpt4o_cost = tokens * gpt4o_config["cost_per_token"]
         
         # Calculate savings
-        energy_saved = gpt4_energy - actual_energy
-        cost_saved = gpt4_cost - actual_cost
-        energy_saved_percent = (energy_saved / gpt4_energy) * 100 if gpt4_energy > 0 else 0
-        cost_saved_percent = (cost_saved / gpt4_cost) * 100 if gpt4_cost > 0 else 0
+        energy_saved = gpt4o_energy - actual_energy
+        cost_saved = gpt4o_cost - actual_cost
+        energy_saved_percent = (energy_saved / gpt4o_energy) * 100 if gpt4o_energy > 0 else 0
+        cost_saved_percent = (cost_saved / gpt4o_cost) * 100 if gpt4o_cost > 0 else 0
         
         return {
             "selected_model": selected_config["name"],
             "tokens": tokens,
             "actual_energy": actual_energy,
             "actual_cost": actual_cost,
-            "gpt4_energy": gpt4_energy,
-            "gpt4_cost": gpt4_cost,
+            "gpt4o_energy": gpt4o_energy,
+            "gpt4o_cost": gpt4o_cost,
             "energy_saved": energy_saved,
             "cost_saved": cost_saved,
             "energy_saved_percent": energy_saved_percent,
@@ -144,11 +198,33 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
     # Calculate savings
     savings = router.calculate_savings(selected_model, message)
     
+    open_router_model_dict = {
+        "gpt-4": "openai/gpt-4o",
+        "llama-7b": "alfredpros/codellama-7b-instruct-solidity",
+    }
+    response = requests.post(
+    url="https://openrouter.ai/api/v1/chat/completions",
+    headers={
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    },
+    data=json.dumps({
+        "model": open_router_model_dict.get(selected_model, "openai/gpt-4o"), # Optional
+        "messages": [
+        {
+            "role": "user",
+            "content": message
+        }
+        ]
+    })
+    )   
+    data = response.json()
+    answer = data["choices"][0]["message"]["content"]
     # Simulate model response (in real implementation, this would call actual APIs)
     if selected_model == "search_engine":
         response = f"Based on search results: [This would be real search results for: {message}]\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
     else:
-        response = f"[This would be the actual model response to: {message}]\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
+        response = f"{answer}\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
     
     # Format model info
     model_info = f"""
