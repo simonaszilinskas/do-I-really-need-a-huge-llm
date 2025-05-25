@@ -1,8 +1,9 @@
 # Do I really need a huge LLM?
 
-This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage. This repo was created at the {Tech: Paris} AI Hackathon on May 25th/26th 2025.
-This model is also available at [HuggingFace.co].(https://huggingface.co/monsimas/ModernBERT-ecoRouter)
+This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage. This was done by training a BERT-type model into recognizing prompts as adequate for SLMs or LLM. Details on the this process are available on this repo.
 
+This model is also available at [HuggingFace.co](https://huggingface.co/monsimas/ModernBERT-ecoRouter).
+This repo was created at the {Tech: Paris} AI Hackathon on May 25th/26th 2025.
 
 ## Features
 
