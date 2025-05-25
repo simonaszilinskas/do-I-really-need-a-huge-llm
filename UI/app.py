@@ -2,145 +2,247 @@ import gradio as gr
 import json
 import time
 from typing import Dict, Tuple, List
-import random
 from bertmodel import predict_label
+# from ecologits import EcoLogits  # Removed - using OpenRouter instead
+# from openai import OpenAI  # Removed - using OpenRouter instead
+from dotenv import load_dotenv
+import os
+import requests
+import json
 
+# Set environment variable to suppress tokenizers warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+load_dotenv()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Model configurations with energy consumption and cost estimates
 MODEL_CONFIGS = {
-    "gpt-4": {
-        "name": "GPT-4",
-        "energy_per_token": 0.0001,  # kWh per token (estimated)
-        "cost_per_token": 0.00003,   # USD per token
-        "capabilities": ["complex_reasoning", "coding", "creative_writing", "analysis"],
-        "performance": 10,
+    "large": {
+        "name": "Claude Opus 4",
+        "energy_per_token": 1.356,  # Wh per token (67.8 Wh / 50 tokens)
+        "cost_per_input_token": 0.000015,   # $15/M tokens
+        "cost_per_output_token": 0.000075,  # $75/M tokens
         "icon": "🧠"
     },
-    "gpt-3.5": {
-        "name": "GPT-3.5",
-        "energy_per_token": 0.00005,
-        "cost_per_token": 0.000002,
-        "capabilities": ["general_qa", "simple_coding", "summarization"],
-        "performance": 7,
-        "icon": "💡"
-    },
-    "claude-instant": {
-        "name": "Claude Instant",
-        "energy_per_token": 0.00004,
-        "cost_per_token": 0.0000008,
-        "capabilities": ["quick_responses", "basic_analysis", "chat"],
-        "performance": 6,
+    "small": {
+        "name": "Mistral Small 24B",
+        "energy_per_token": 0.00596,  # Wh per token (0.298 Wh / 50 tokens)
+        "cost_per_input_token": 0.00000005,   # $0.05/M tokens
+        "cost_per_output_token": 0.00000012,  # $0.12/M tokens
         "icon": "⚡"
-    },
-    "llama-7b": {
-        "name": "Llama 7B",
-        "energy_per_token": 0.00002,
-        "cost_per_token": 0.0000002,
-        "capabilities": ["basic_qa", "simple_tasks"],
-        "performance": 4,
-        "icon": "🦙"
-    },
-    "search_engine": {
-        "name": "Search Engine",
-        "energy_per_token": 0.00001,
-        "cost_per_token": 0.0000001,
-        "capabilities": ["factual_queries", "current_events", "specific_data"],
-        "performance": 3,
-        "icon": "🔍"
     }
 }
 
 class ModelRouter:
     def __init__(self):
         self.routing_history = []
+        print("[INIT] ModelRouter initialized")
     
     def classify_prompt(self, prompt: str) -> str:
-        return predict_label(prompt)
+        print(f"\n[CLASSIFY] Classifying prompt: '{prompt[:50]}...'")
+        label = predict_label(prompt)
+        print(f"[CLASSIFY] ModernBERT returned label: '{label}'")
+        return label
     
     def select_model(self, prompt: str) -> str:
-        """Select the most efficient model based on prompt classification"""
+        """Select the most efficient model based on prompt classification."""
         prompt_type = self.classify_prompt(prompt)
-        
-        # Model selection logic
-        model_map = {
-            "search_query": "search_engine",
-            "complex_reasoning": "gpt-4",
-            "coding": "gpt-3.5",
-            "creative_writing": "gpt-4",
-            "general_qa": "llama-7b"
-        }
-        
-        # For simple questions, we might use an even lighter model
-        if len(prompt.split()) < 10 and "?" in prompt:
-            return "llama-7b"
-        
-        return model_map.get(prompt_type, "claude-instant")
+        # Normalize
+        key = prompt_type.strip().lower()
+        print(f"[SELECT] Normalized label: '{key}'")
+
+        # Map normalized labels to actual MODEL_CONFIGS keys
+        if "small" in key:
+            print(f"[SELECT] Selected: SMALL model (Mistral Small 24B)")
+            return "small"
+        else:
+            print(f"[SELECT] Selected: LARGE model (Claude Opus 4)")
+            return "large"
     
-    def estimate_tokens(self, prompt: str, response_length: str = "medium") -> int:
-        """Estimate token count for prompt and response"""
-        # Simple estimation: ~1.3 tokens per word
-        prompt_tokens = int(len(prompt.split()) * 1.3)
-        
-        response_multipliers = {
-            "short": 50,
-            "medium": 150,
-            "long": 300
-        }
-        response_tokens = response_multipliers.get(response_length, 150)
-        
-        return prompt_tokens + response_tokens
+
+    def estimate_tokens(self, 
+                        prompt: str, 
+                        response: str | None = None,
+                        max_response_tokens: int | None = None) -> int:
+        """
+        Estimate total token count: exact prompt tokens + 
+        a target number of response tokens.
+        """
+        # Simple estimation: 4 characters = 1 token
+        prompt_tokens = len(prompt) // 4
+        print(f"[TOKENS] Prompt tokens: {prompt_tokens} (from {len(prompt)} chars)")
+
+        if response is not None:
+            response_tokens = len(response) // 4
+        elif max_response_tokens is not None:
+            # you’re reserving this many tokens for the model’s reply
+            response_tokens = max_response_tokens
+        else:
+            # Estimate response will be similar length to prompt
+            response_tokens = prompt_tokens
+
+        total_tokens = prompt_tokens + response_tokens
+        print(f"[TOKENS] Response tokens: {response_tokens}, Total: {total_tokens}")
+        return total_tokens
     
-    def calculate_savings(self, selected_model: str, prompt: str) -> Dict:
-        """Calculate energy and cost savings compared to using GPT-4"""
-        tokens = self.estimate_tokens(prompt)
+    def estimate_large_model_energy(self, tokens: int) -> float:
+        """
+        Estimate large model energy consumption based on tokens.
+        Using empirical estimates for energy consumption.
+        """
+        large_config = MODEL_CONFIGS["large"]
+        return tokens * large_config["energy_per_token"]
+    
+    def calculate_savings(self, selected_model: str, prompt: str, response: str = None) -> Dict:
+        """Calculate energy and cost savings compared to using the large model"""
+        print(f"[SAVINGS] Calculating for model: {selected_model}")
+        
+        # Calculate input and output tokens separately
+        input_tokens = max(1, len(prompt) // 4)  # Minimum 1 token
+        
+        if response:
+            # Use actual response length if available
+            output_tokens = max(1, len(response) // 4)
+        else:
+            # Estimate if no response yet (for preview)
+            output_tokens = max(10, input_tokens)  # Assume at least 10 tokens response
+        
+        total_tokens = input_tokens + output_tokens
+        
+        print(f"[SAVINGS] Input tokens: {input_tokens}, Output tokens: {output_tokens}")
         
         selected_config = MODEL_CONFIGS[selected_model]
-        gpt4_config = MODEL_CONFIGS["gpt-4"]
+        large_config = MODEL_CONFIGS["large"]
         
         # Calculate actual usage
-        actual_energy = tokens * selected_config["energy_per_token"]
-        actual_cost = tokens * selected_config["cost_per_token"]
+        actual_energy = total_tokens * selected_config["energy_per_token"]
+        actual_cost = (input_tokens * selected_config["cost_per_input_token"] + 
+                      output_tokens * selected_config["cost_per_output_token"])
         
-        # Calculate GPT-4 usage
-        gpt4_energy = tokens * gpt4_config["energy_per_token"]
-        gpt4_cost = tokens * gpt4_config["cost_per_token"]
+        # Calculate large model usage
+        large_energy = self.estimate_large_model_energy(total_tokens)
+        large_cost = (input_tokens * large_config["cost_per_input_token"] + 
+                     output_tokens * large_config["cost_per_output_token"])
         
-        # Calculate savings
-        energy_saved = gpt4_energy - actual_energy
-        cost_saved = gpt4_cost - actual_cost
-        energy_saved_percent = (energy_saved / gpt4_energy) * 100 if gpt4_energy > 0 else 0
-        cost_saved_percent = (cost_saved / gpt4_cost) * 100 if gpt4_cost > 0 else 0
+        # Calculate savings (only positive if small model is selected)
+        if selected_model == "small":
+            energy_saved = large_energy - actual_energy
+            cost_saved = large_cost - actual_cost
+            energy_saved_percent = (energy_saved / large_energy) * 100 if large_energy > 0 else 0
+            cost_saved_percent = (cost_saved / large_cost) * 100 if large_cost > 0 else 0
+        else:
+            # No savings if using the large model
+            energy_saved = 0
+            cost_saved = 0
+            energy_saved_percent = 0
+            cost_saved_percent = 0
+        
+        print(f"[SAVINGS] Selected: {selected_model}")
+        print(f"[SAVINGS] Actual energy: {actual_energy:.4f} Wh, Large energy: {large_energy:.4f} Wh")
+        print(f"[SAVINGS] Actual cost: ${actual_cost:.8f}, Large cost: ${large_cost:.8f}")
+        print(f"[SAVINGS] Energy saved: {energy_saved:.4f} Wh ({energy_saved_percent:.1f}%)")
+        print(f"[SAVINGS] Cost saved: ${cost_saved:.8f} ({cost_saved_percent:.1f}%)")
         
         return {
             "selected_model": selected_config["name"],
-            "tokens": tokens,
+            "tokens": total_tokens,
             "actual_energy": actual_energy,
             "actual_cost": actual_cost,
-            "gpt4_energy": gpt4_energy,
-            "gpt4_cost": gpt4_cost,
+            "large_energy": large_energy,
+            "large_cost": large_cost,
             "energy_saved": energy_saved,
             "cost_saved": cost_saved,
             "energy_saved_percent": energy_saved_percent,
             "cost_saved_percent": cost_saved_percent,
-            "co2_saved_grams": energy_saved * 400  # Approximate CO2 per kWh
+            "is_large_model": selected_model == "large"  # Add flag for template
         }
 
+print("[STARTUP] Initializing ModelRouter...")
 router = ModelRouter()
+print("[STARTUP] ModelRouter ready")
+print(f"[STARTUP] Available models: {list(MODEL_CONFIGS.keys())}")
+print(f"[STARTUP] OpenRouter API Key: {'SET' if OPENROUTER_API_KEY else 'NOT SET'}")
 
 def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, str]:
     """Process the user message and return response with savings info"""
+    print(f"\n{'='*60}")
+    print(f"[PROCESS] New message received: '{message[:100]}...'")
     
     # Route to appropriate model
     selected_model = router.select_model(message)
     model_config = MODEL_CONFIGS[selected_model]
+    print(f"[PROCESS] Using model config: {model_config['name']}")
     
-    # Calculate savings
-    savings = router.calculate_savings(selected_model, message)
+    # Initial savings estimate (will be recalculated after getting response)
+    print(f"[PROCESS] Calculating initial savings estimate...")
+    initial_savings = router.calculate_savings(selected_model, message)
+    print(f"[PROCESS] Initial estimate: {initial_savings['energy_saved_percent']:.1f}% energy, {initial_savings['cost_saved_percent']:.1f}% cost")
     
-    # Simulate model response (in real implementation, this would call actual APIs)
-    if selected_model == "search_engine":
-        response = f"Based on search results: [This would be real search results for: {message}]\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
+    open_router_model_dict = {
+        "large": "anthropic/claude-opus-4",
+        "small": "mistralai/mistral-small-24b-instruct-2501"
+    }
+    # Check if API key is available
+    if not OPENROUTER_API_KEY:
+        print(f"[API] No OpenRouter API key found - running in DEMO MODE")
+        answer = f"[Demo Mode] This would be a response from {model_config['name']} to: {message[:50]}..."
     else:
-        response = f"[This would be the actual model response to: {message}]\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
+        print(f"[API] OpenRouter API key found: {OPENROUTER_API_KEY[:10]}...")
+        try:
+            model_id = open_router_model_dict[selected_model]
+            print(f"[API] Calling OpenRouter with model: {model_id}")
+            
+            request_data = {
+                "model": model_id,
+                "messages": [
+                {
+                    "role": "user",
+                    "content": message
+                }
+                ]
+            }
+            print(f"[API] Request data: {json.dumps(request_data, indent=2)[:200]}...")
+            
+            response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            data=json.dumps(request_data)
+            )
+            
+            # Debug: print response status and content
+            print(f"[API] Response Status Code: {response.status_code}")
+            print(f"[API] Response Headers: {dict(response.headers)}")
+            
+            if response.status_code != 200:
+                print(f"[API ERROR] Full response: {response.text}")
+                answer = f"[API Error {response.status_code}] {response.text[:200]}..."
+            else:
+                data = response.json()
+                print(f"[API] Response keys: {list(data.keys())}")
+                
+                if "choices" in data and len(data["choices"]) > 0:
+                    answer = data["choices"][0]["message"]["content"]
+                    print(f"[API] Successfully got response: {answer[:100]}...")
+                else:
+                    print(f"[API ERROR] Unexpected response format: {json.dumps(data, indent=2)}")
+                    answer = f"[Error] Unexpected response format from OpenRouter API"
+        except Exception as e:
+            print(f"[API EXCEPTION] Error type: {type(e).__name__}")
+            print(f"[API EXCEPTION] Error message: {str(e)}")
+            import traceback
+            print(f"[API EXCEPTION] Traceback:\n{traceback.format_exc()}")
+            answer = f"[Error] Failed to get response from {model_config['name']}. Error: {str(e)}"
+    
+    # Recalculate savings with actual response
+    print(f"[PROCESS] Recalculating savings with actual response...")
+    savings = router.calculate_savings(selected_model, message, answer)
+    print(f"[PROCESS] Final savings: {savings['energy_saved_percent']:.1f}% energy, {savings['cost_saved_percent']:.1f}% cost")
+    
+    # Format the response with model info
+    response = f"{answer}\n\n<div style='background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin-top: 10px; border-radius: 4px;'><small style='color: #0369a1; font-weight: 500;'>{model_config['icon']} Answered by {model_config['name']}</small></div>"
     
     # Format model info
     model_info = f"""
@@ -153,41 +255,61 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
 </div>
 """
     
-    # Format savings information with a more minimal design
-    savings_info = f"""
-<div style="background: #ffffff; border: 1px solid #e1e8ed; border-radius: 12px; padding: 20px;">
+    # Format savings information with conditional display based on model
+    if savings['is_large_model']:
+        # Show actual consumption for large model with warning colors
+        savings_info = f"""
+<div style="background: #ffffff; border: 1px solid #fed7aa; border-radius: 12px; padding: 20px;">
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
         <div>
-            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Energy Efficiency</p>
-            <p style="color: #22c55e; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
-                {savings['energy_saved_percent']:.0f}% saved
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">🔥 Energy Consumption</p>
+            <p style="color: #ea580c; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                {savings['actual_energy']:.1f} Wh
             </p>
-            <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
-                {savings['energy_saved']:.6f} kWh reduction
+            <p style="color: #7c2d12; font-size: 0.85em; margin: 0;">
+                High energy usage
             </p>
         </div>
         <div>
-            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">Cost Optimization</p>
-            <p style="color: #3b82f6; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
-                {savings['cost_saved_percent']:.0f}% saved
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">💸 Cost Impact</p>
+            <p style="color: #dc2626; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                ${savings['actual_cost']:.6f}
             </p>
-            <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
-                ${savings['cost_saved']:.6f} reduction
+            <p style="color: #991b1b; font-size: 0.85em; margin: 0;">
+                Premium pricing
             </p>
         </div>
     </div>
-    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e1e8ed;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <p style="color: #8795a1; margin: 0; font-size: 0.85em;">Environmental Impact</p>
-                <p style="color: #5a6c7d; margin: 5px 0;">
-                    <span style="color: #10b981; font-weight: bold;">{savings['co2_saved_grams']:.1f}g</span> CO₂ prevented
-                </p>
-            </div>
-            <div style="text-align: right;">
-                <p style="color: #8795a1; margin: 0; font-size: 0.85em;">Tokens Processed</p>
-                <p style="color: #5a6c7d; margin: 5px 0; font-weight: bold;">{savings['tokens']:,}</p>
-            </div>
+</div>
+"""
+    else:
+        # Show savings for small model with positive colors
+        savings_info = f"""
+<div style="background: #ffffff; border: 1px solid #e1e8ed; border-radius: 12px; padding: 20px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">⚡ Energy Efficiency</p>
+            <p style="color: #22c55e; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                {savings['energy_saved_percent']:.1f}% saved
+            </p>
+            <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
+                {savings['energy_saved']:.1f} Wh reduction
+            </p>
+            <p style="color: #8795a1; font-size: 0.75em; margin: 3px 0 0 0; font-style: italic;">
+                vs. using large model
+            </p>
+        </div>
+        <div>
+            <p style="color: #8795a1; margin: 0; font-size: 0.9em;">💰 Cost Optimization</p>
+            <p style="color: #3b82f6; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                {savings['cost_saved_percent']:.1f}% saved
+            </p>
+            <p style="color: #5a6c7d; font-size: 0.85em; margin: 0;">
+                ${savings['cost_saved']:.8f} reduction
+            </p>
+            <p style="color: #8795a1; font-size: 0.75em; margin: 3px 0 0 0; font-style: italic;">
+                vs. using large model
+            </p>
         </div>
     </div>
 </div>
@@ -201,6 +323,9 @@ def process_message(message: str, history: List[List[str]]) -> Tuple[str, str, s
         "savings": savings
     })
     
+    print(f"[PROCESS] Response formatted, returning to UI")
+    print(f"{'='*60}\n")
+    
     return response, model_info, savings_info
 
 def get_statistics() -> str:
@@ -209,65 +334,47 @@ def get_statistics() -> str:
         return """
 <div style="background: #f8fafc; border-radius: 12px; padding: 30px; text-align: center; color: #64748b;">
     <p style="margin: 0;">No queries processed yet</p>
-    <p style="margin: 10px 0 0 0; font-size: 0.9em;">Start a conversation to see your impact metrics</p>
+    <p style="margin: 10px 0 0 0; font-size: 0.9em;">💬 Start a conversation to see your impact metrics</p>
 </div>
 """
     
     total_queries = len(router.routing_history)
     
-    # Placeholder company-wide data (will be replaced with Supabase data later)
-    company_total_energy_saved = 12.4567  # kWh
-    company_total_cost_saved = 234.89     # USD
-    company_total_co2_saved = 4982.7      # grams
-    company_total_queries = 8742
+    # Calculate user's total savings
+    user_total_energy_saved = sum(entry["savings"]["energy_saved"] for entry in router.routing_history)
+    user_total_cost_saved = sum(entry["savings"]["cost_saved"] for entry in router.routing_history)
+    
+    # Count how many times each model was used
+    small_model_count = sum(1 for entry in router.routing_history if entry["model"] == "small")
+    large_model_count = sum(1 for entry in router.routing_history if entry["model"] == "large")
     
     stats = f"""
 <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px;">
-    <div style="text-align: center; margin-bottom: 25px;">
-        <p style="color: #475569; font-size: 1.1em; margin: 0; font-weight: 500;">{total_queries} queries processed</p>
-        <p style="color: #64748b; font-size: 0.9em; margin: 10px 0 0 0;">Model used is shown with each response</p>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <h4 style="color: #1e293b; font-size: 1.1em; margin: 0; font-weight: 600;">🌍 Your Total Impact</h4>
     </div>
     
-    <div style="border-top: 1px solid #e2e8f0; padding-top: 20px;">
-        <h4 style="color: #1e293b; font-size: 1em; margin: 0 0 15px 0; font-weight: 600; text-align: center;">Company Total Saved</h4>
-        
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
-            <div style="background: #f0fdf4; border-radius: 8px; padding: 12px; text-align: center;">
-                <p style="color: #166534; font-size: 0.8em; margin: 0;">Energy</p>
-                <p style="color: #15803d; font-size: 1.3em; font-weight: bold; margin: 3px 0;">
-                    {company_total_energy_saved:.2f}
-                </p>
-                <p style="color: #166534; font-size: 0.7em; margin: 0;">kWh</p>
-            </div>
-            
-            <div style="background: #eff6ff; border-radius: 8px; padding: 12px; text-align: center;">
-                <p style="color: #1e40af; font-size: 0.8em; margin: 0;">Cost</p>
-                <p style="color: #2563eb; font-size: 1.3em; font-weight: bold; margin: 3px 0;">
-                    ${company_total_cost_saved:.2f}
-                </p>
-                <p style="color: #1e40af; font-size: 0.7em; margin: 0;">USD</p>
-            </div>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px;">
+        <div style="background: #f0fdf4; border-radius: 8px; padding: 15px; text-align: center;">
+            <p style="color: #166534; font-size: 0.9em; margin: 0;">🌱 Energy Saved</p>
+            <p style="color: #15803d; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                {user_total_energy_saved:.1f}
+            </p>
+            <p style="color: #166534; font-size: 0.8em; margin: 0;">Wh</p>
         </div>
         
-        <div style="background: #f8fafc; border-radius: 8px; padding: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="text-align: center; flex: 1;">
-                    <p style="color: #64748b; font-size: 0.8em; margin: 0;">CO₂ Prevented</p>
-                    <p style="color: #0f172a; font-size: 1.1em; font-weight: 600; margin: 3px 0;">
-                        {company_total_co2_saved:.1f}g
-                    </p>
-                </div>
-                <div style="text-align: center; flex: 1;">
-                    <p style="color: #64748b; font-size: 0.8em; margin: 0;">Total Queries</p>
-                    <p style="color: #0f172a; font-size: 1.1em; font-weight: 600; margin: 3px 0;">
-                        {company_total_queries:,}
-                    </p>
-                </div>
-            </div>
+        <div style="background: #eff6ff; border-radius: 8px; padding: 15px; text-align: center;">
+            <p style="color: #1e40af; font-size: 0.9em; margin: 0;">💵 Money Saved</p>
+            <p style="color: #2563eb; font-size: 1.5em; font-weight: bold; margin: 5px 0;">
+                ${user_total_cost_saved:.6f}
+            </p>
+            <p style="color: #1e40af; font-size: 0.8em; margin: 0;">USD</p>
         </div>
-        
-        <p style="color: #94a3b8; font-size: 0.75em; text-align: center; margin: 10px 0 0 0; font-style: italic;">
-            * Company-wide statistics across all users
+    </div>
+    
+    <div style="background: #fefce8; border-radius: 8px; padding: 12px; text-align: center;">
+        <p style="color: #713f12; font-size: 0.9em; margin: 0;">
+            <span style="font-weight: 600;">Model Usage:</span> Small model {small_model_count}x, Large model {large_model_count}x
         </p>
     </div>
 </div>
@@ -288,7 +395,7 @@ custom_css = """
 
 # Create Gradio interface
 with gr.Blocks(
-    title="AI Router - Intelligent Model Selection", 
+    title="Do I really need a huge LLM?", 
     theme=gr.themes.Base(
         primary_hue="blue",
         secondary_hue="gray",
@@ -302,10 +409,10 @@ with gr.Blocks(
             gr.Markdown("""
             <div style="margin-bottom: 30px;">
                 <h1 style="margin: 0; font-size: 2em; font-weight: 600; color: #0f172a;">
-                    AI Efficiency Router
+                    🤔 Do I *really* need a huge LLM?
                 </h1>
                 <p style="margin: 10px 0 0 0; color: #64748b; font-size: 1.1em;">
-                    Intelligent model selection for optimal performance and sustainability
+                    Let's find out! This tool automatically routes your queries to the right-sized model. 🎯
                 </p>
             </div>
             """)
@@ -321,14 +428,14 @@ with gr.Blocks(
             
             with gr.Row():
                 msg = gr.Textbox(
-                    placeholder="Type your message here...",
+                    placeholder="💭 Type your message here...",
                     show_label=False,
                     scale=9,
                     container=False,
                     elem_classes=["message-input"]
                 )
                 submit = gr.Button(
-                    "Send",
+                    "Send 🚀",
                     variant="primary",
                     scale=1,
                     min_width=100
@@ -339,7 +446,7 @@ with gr.Blocks(
             model_display = gr.HTML(
                 value="""
                 <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center; color: #64748b;">
-                    <p style="margin: 0;">Model selection will appear here</p>
+                    <p style="margin: 0;">🤖 Model selection will appear here</p>
                 </div>
                 """,
                 label="Selected Model"
@@ -349,7 +456,7 @@ with gr.Blocks(
             savings_display = gr.HTML(
                 value="""
                 <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center; color: #64748b;">
-                    <p style="margin: 0;">Efficiency metrics will appear here</p>
+                    <p style="margin: 0;">📊 Efficiency metrics will appear here</p>
                 </div>
                 """,
                 label="Efficiency Metrics"
@@ -358,14 +465,14 @@ with gr.Blocks(
             # Cumulative stats
             stats_display = gr.HTML(
                 value=get_statistics(),
-                label="Session Overview"
+                label="Your Impact Dashboard"
             )
     
     # Footer with minimal info
     with gr.Row():
         gr.Markdown("""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 0.85em;">
-            <p style="margin: 5px 0;">Comparing against GPT-4 baseline • Real-time efficiency tracking • Environmental impact monitoring</p>
+            <p style="margin: 5px 0;">🔍 Comparing small vs large model efficiency • 📈 Real-time tracking • 🌎 Environmental impact monitoring</p>
         </div>
         """)
     
@@ -393,4 +500,14 @@ with gr.Blocks(
     msg.submit(lambda: "", outputs=[msg])
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    print(f"\n{'='*60}")
+    print(f"      DO I REALLY NEED A HUGE LLM? - STARTUP")
+    print(f"{'='*60}")
+    print(f"[LAUNCH] Starting Gradio app...")
+    print(f"[LAUNCH] Environment: TOKENIZERS_PARALLELISM={os.environ.get('TOKENIZERS_PARALLELISM')}")
+    print(f"[LAUNCH] Models configured:")
+    for k, v in MODEL_CONFIGS.items():
+        print(f"         - {k}: {v['name']} ({v['icon']})")
+    print(f"[LAUNCH] OpenRouter API Key: {'✓ SET' if OPENROUTER_API_KEY else '✗ NOT SET (Demo Mode)'}")
+    print(f"{'='*60}\n")
+    demo.launch(share=False)
