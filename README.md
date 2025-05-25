@@ -2,7 +2,7 @@
 
 This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage. This was done by training a BERT-type model into recognizing prompts as adequate for SLMs or LLM. Details on the this process are available on this repo.
 
-This model is also available at [HuggingFace.co](https://huggingface.co/monsimas/ModernBERT-ecoRouter).
+This model is also available at [HuggingFace](https://huggingface.co/monsimas/ModernBERT-ecoRouter).
 This repo was created at the {Tech: Paris} AI Hackathon on May 25th/26th 2025.
 
 ## Features
@@ -15,8 +15,8 @@ This repo was created at the {Tech: Paris} AI Hackathon on May 25th/26th 2025.
 
 ## Data sources used
 
-- [WildChat dataset](https://huggingface.co/datasets/allenai/WildChat)
-- [ShareGPT52K](https://huggingface.co/datasets/RyokoAI/ShareGPT52K/tree/main/old)
+- We trained our data using the [WildChat dataset](https://huggingface.co/datasets/allenai/WildChat) and [ShareGPT52K dataset](https://huggingface.co/datasets/RyokoAI/ShareGPT52K/tree/main/old).
+- Environmental impact from the models were estimated using [EcoLogits](https://huggingface.co/spaces/genai-impact/ecologits-calculator) while computational costs were recovered from [OpenRouter.ai](https://openrouter.ai/).
 
 ## Models used
 
