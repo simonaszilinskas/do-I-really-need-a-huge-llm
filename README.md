@@ -3,7 +3,7 @@
 This small language model proposes other language models based on input complexity to lower the computational costs and environmental impact of everyday AI usage. We accomplished this using a BERT-type model to recognize prompts as adequate for SLMs or LLMs. Details on this process are available in this repo.
 
 This model is also available at [HuggingFace](https://huggingface.co/monsimas/ModernBERT-ecoRouter).
-We created this repo at the {Tech: Paris} AI Hackathon on May 25th/26th, 2025.
+We created this repo at the {Tech: Paris} AI Hackathon on May 24th/25th, 2025.
 
 ## Features
 
@@ -15,7 +15,7 @@ We created this repo at the {Tech: Paris} AI Hackathon on May 25th/26th, 2025.
 
 ## Data sources used
 
-- We trained our data using the [WildChat dataset](https://huggingface.co/datasets/allenai/WildChat) and [ShareGPT52K dataset](https://huggingface.co/datasets/RyokoAI/ShareGPT52K/tree/main/old).
+- We trained our data using the [WildChat dataset](https://huggingface.co/datasets/allenai/WildChat) and [ShareGPT52K dataset](https://huggingface.co/datasets/RyokoAI/ShareGPT52K/tree/main/old). Labels were assigned using [mistral-large-latest](https://mistral.ai/news/mistral-large).
 - Environmental impact from the models was estimated using [EcoLogits](https://huggingface.co/spaces/genai-impact/ecologits-calculator) while we recovered computational costs from [OpenRouter.ai](https://openrouter.ai/).
 
 ## Models used
@@ -41,9 +41,9 @@ The interface will launch on your browser:
 
 ![Interface Screenshot](./images/screenshot.jpg)
 
-2. Write your prompt on the bar at the bottom right of the screen and press 'send'.
+2. Write your prompt in the search bar at the bottom left of the screen and press 'send'.
 
-3. Our model will analyze your prompt and provide an adequate language model to process it. This model will be displayed on the chat, while the interface will show data on your prompt's environmental impact and computational costs on the screen's right side.
+3. Our model will analyze your prompt and provide an adequate language model to process it. This model will be displayed in the chat, while the interface will show data on your prompt's environmental impact and computational costs on the screen's right side.
 
 4. This repo also contains the methodology we used to train our model. Feel free to adapt it and retrain it to your specific needs!
 
